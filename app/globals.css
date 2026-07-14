@@ -92,6 +92,37 @@ body {
   font-weight: 600;
 }
 
+.recordTitle {
+  font-size: 1.2rem;
+  font-weight: 800;
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.recordList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.recordRow {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+.recordLabel {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #ffd166;
+  margin-bottom: 4px;
+}
+
+.recordValue {
+  margin: 0;
+  line-height: 1.7;
+}
+
 .loading {
   opacity: 0.9;
   animation: pulse 1.2s ease-in-out infinite;
