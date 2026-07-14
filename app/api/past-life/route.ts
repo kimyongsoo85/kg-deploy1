@@ -87,6 +87,19 @@ function hashName(name: string): number {
   return Math.abs(h);
 }
 
+// 800자를 넘으면 마지막 완결 문장 경계에서 자르는 최종 안전장치
+function clampToSentence(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const head = text.slice(0, max);
+  let cut = -1;
+  const re = /[.!?…]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(head)) !== null) {
+    cut = m.index + 1;
+  }
+  return cut >= max * 0.6 ? head.slice(0, cut) : head;
+}
+
 export async function POST(req: Request) {
   let name: unknown;
   try {
@@ -131,27 +144,29 @@ export async function POST(req: Request) {
 
       let story = completion.choices[0]?.message?.content?.trim();
 
-      // 모델이 분량을 초과하면 같은 톤/사실을 유지한 채 한 번 감량시킨다
-      if (story && story.length > 800) {
+      // 분량이 500~800자를 벗어나면 같은 톤/사실을 유지한 채 한 번 보정한다
+      if (story && (story.length > 800 || story.length < 500)) {
+        const adjustment =
+          story.length > 800
+            ? `지금 이야기는 공백 포함 ${story.length}자로 너무 길어. 같은 톤과 다섯 가지 사실을 그대로 유지하면서 공백 포함 600자 내외로 줄여서 다시 써줘. 본문만 출력해.`
+            : `지금 이야기는 공백 포함 ${story.length}자로 너무 짧아. 같은 톤과 다섯 가지 사실을 그대로 유지하면서 묘사와 디테일을 더해 공백 포함 650자 내외로 다시 써줘. 본문만 출력해.`;
         const revision = await openai.chat.completions.create({
           model,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: userPrompt },
             { role: "assistant", content: story },
-            {
-              role: "user",
-              content: `지금 이야기는 공백 포함 ${story.length}자로 너무 길어. 같은 톤과 다섯 가지 사실을 그대로 유지하면서 공백 포함 500~800자로 압축해서 다시 써줘. 본문만 출력해.`,
-            },
+            { role: "user", content: adjustment },
           ],
         });
-        const shorter = revision.choices[0]?.message?.content?.trim();
-        if (shorter && shorter.length < story.length) {
-          story = shorter;
+        const revised = revision.choices[0]?.message?.content?.trim();
+        if (revised) {
+          story = revised;
         }
       }
 
       if (story) {
+        story = clampToSentence(story, 800);
         return NextResponse.json({ name: trimmedName, record, tone: tone.label, story });
       }
     } catch (err) {
