@@ -108,13 +108,8 @@ export async function POST(req: Request) {
   if (apiKey) {
     try {
       const openai = new OpenAI({ apiKey });
-      const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL ?? "gpt-5.5",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: `이름: ${trimmedName}
+      const model = process.env.OPENAI_MODEL ?? "gpt-5.5";
+      const userPrompt = `이름: ${trimmedName}
 작문 톤: ${tone.label} — ${tone.direction}
 
 [기록 원본 #${record.id}]
@@ -124,12 +119,38 @@ export async function POST(req: Request) {
 - 업적: ${record.achievement}
 - 사람들의 기억: ${record.memory}
 
-위 기록으로 ${trimmedName}님의 전생 이야기를 작문해줘. 분량은 공백 포함 500~800자를 반드시 지켜줘.`,
-          },
+위 기록으로 ${trimmedName}님의 전생 이야기를 작문해줘. 분량은 공백 포함 500~800자를 반드시 지켜줘.`;
+
+      const completion = await openai.chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
         ],
       });
 
-      const story = completion.choices[0]?.message?.content?.trim();
+      let story = completion.choices[0]?.message?.content?.trim();
+
+      // 모델이 분량을 초과하면 같은 톤/사실을 유지한 채 한 번 감량시킨다
+      if (story && story.length > 800) {
+        const revision = await openai.chat.completions.create({
+          model,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+            { role: "assistant", content: story },
+            {
+              role: "user",
+              content: `지금 이야기는 공백 포함 ${story.length}자로 너무 길어. 같은 톤과 다섯 가지 사실을 그대로 유지하면서 공백 포함 500~800자로 압축해서 다시 써줘. 본문만 출력해.`,
+            },
+          ],
+        });
+        const shorter = revision.choices[0]?.message?.content?.trim();
+        if (shorter && shorter.length < story.length) {
+          story = shorter;
+        }
+      }
+
       if (story) {
         return NextResponse.json({ name: trimmedName, record, tone: tone.label, story });
       }
